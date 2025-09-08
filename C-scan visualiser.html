@@ -1,0 +1,778 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phased Array C-Scan Visualizer - Optimized</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .file-input-button {
+            transition: background-color 0.2s, box-shadow 0.2s;
+        }
+        .file-input-button:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .progress-bar-inner {
+            transition: width 0.3s ease-in-out;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div class="container mx-auto p-4 md:p-8">
+        <!-- Header -->
+        <header class="bg-white shadow-md rounded-xl p-6 mb-8">
+            <h1 class="text-3xl font-bold text-gray-900">Phased Array C-Scan Visualizer</h1>
+            <p class="mt-2 text-gray-600">Upload a C-Scan data file (.txt or .csv) to generate an interactive corrosion heatmap.</p>
+        </header>
+
+        <!-- Main Content -->
+        <main class="bg-white shadow-md rounded-xl p-6">
+            <!-- Upload Section -->
+            <div id="upload-section" class="text-center border-2 border-dashed border-gray-300 rounded-lg p-8 md:p-12">
+                <svg class="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
+                    <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+                <h2 class="mt-4 text-xl font-semibold text-gray-900">Upload C-Scan file(s)</h2>
+                <p class="mt-2 text-sm text-gray-500">Drag and drop or click to select one or more files.</p>
+                <input type="file" id="file-input" class="hidden" accept=".txt,.csv" multiple>
+                <button id="upload-button" class="mt-6 file-input-button bg-blue-600 text-white font-semibold py-2 px-6 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
+                    Select Files
+                </button>
+            </div>
+
+            <!-- Status/Error Messages -->
+            <div id="status-message" class="hidden mt-4 text-center p-4 rounded-lg"></div>
+            
+            <!-- Progress Bar -->
+            <div id="progress-container" class="hidden mt-4 w-full bg-gray-200 rounded-full h-2.5">
+                <div id="progress-bar" class="progress-bar-inner bg-blue-600 h-2.5 rounded-full" style="width: 0%"></div>
+            </div>
+
+            <!-- File List and Composite Section -->
+            <div id="file-management-section" class="hidden mt-8 p-4 bg-gray-50 rounded-lg shadow-inner">
+                <div class="flex flex-wrap justify-between items-center border-b pb-2 mb-4">
+                    <h3 class="text-lg font-semibold">Processed Files</h3>
+                    <div class="flex gap-2 mt-2 md:mt-0">
+                        <button id="composite-button" class="file-input-button bg-green-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500">
+                            Generate Composite
+                        </button>
+                        <button id="export-button" class="file-input-button bg-purple-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-purple-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-purple-500 hidden">
+                            Export Image
+                        </button>
+                        <button id="export-clean-button" class="file-input-button bg-teal-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-teal-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-teal-500 hidden">
+                            Export Heatmap Only
+                        </button>
+                    </div>
+                </div>
+                <div id="file-list" class="text-sm text-gray-700">
+                    <!-- File list will be injected here -->
+                </div>
+            </div>
+
+            <!-- Controls Section -->
+            <div id="controls-section" class="hidden mt-8 p-4 bg-gray-50 rounded-lg shadow-inner">
+                <h3 class="text-lg font-semibold border-b pb-2 mb-4">Display Controls</h3>
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                    <div>
+                        <label for="min-thickness" class="block text-sm font-medium text-gray-700">Min Thickness (mm)</label>
+                        <input type="number" id="min-thickness" step="0.1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                    <div>
+                        <label for="max-thickness" class="block text-sm font-medium text-gray-700">Max Thickness (mm)</label>
+                        <input type="number" id="max-thickness" step="0.1" class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm">
+                    </div>
+                    <button id="update-button" class="file-input-button bg-blue-600 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 w-full md:w-auto">
+                        Update View
+                    </button>
+                </div>
+            </div>
+
+            <!-- Visualization Section -->
+            <div id="visualization-section" class="hidden mt-8 w-full h-[600px] md:h-[800px]">
+                <div id="plot-container" class="w-full h-full"></div>
+            </div>
+            
+            <!-- Metadata Section -->
+            <div id="metadata-section" class="hidden mt-8 p-4 bg-gray-50 rounded-lg shadow-inner">
+                <h3 class="text-lg font-semibold border-b pb-2 mb-4">Scan Metadata</h3>
+                <div id="metadata-content" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 text-sm">
+                    <!-- Metadata will be injected here -->
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        const uploadButton = document.getElementById('upload-button');
+        const fileInput = document.getElementById('file-input');
+        const uploadSection = document.getElementById('upload-section');
+        const statusMessage = document.getElementById('status-message');
+        const visualizationSection = document.getElementById('visualization-section');
+        const plotContainer = document.getElementById('plot-container');
+        const metadataSection = document.getElementById('metadata-section');
+        const metadataContent = document.getElementById('metadata-content');
+        const controlsSection = document.getElementById('controls-section');
+        const minThicknessInput = document.getElementById('min-thickness');
+        const maxThicknessInput = document.getElementById('max-thickness');
+        const updateButton = document.getElementById('update-button');
+        const fileManagementSection = document.getElementById('file-management-section');
+        const fileListContainer = document.getElementById('file-list');
+        const compositeButton = document.getElementById('composite-button');
+        const exportButton = document.getElementById('export-button');
+        const exportCleanButton = document.getElementById('export-clean-button');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+
+        let processedScans = [];
+        let currentScanData = null;
+        let compositeWorker = null;
+        let isShowingComposite = false;
+        
+        // Precise, manually inverted 'Jet' colorscale - shared between all visualizations
+        const customColorscale = [
+            [0.0, 'rgb(127, 0, 0)'],   // Darkest Red
+            [0.125, 'rgb(255, 0, 0)'],  // Red
+            [0.25, 'rgb(255, 127, 0)'], // Orange
+            [0.375, 'rgb(255, 255, 0)'],// Yellow
+            [0.5, 'rgb(127, 255, 127)'],// Pale Green
+            [0.625, 'rgb(0, 255, 255)'],// Cyan
+            [0.75, 'rgb(0, 0, 255)'],   // Blue
+            [0.875, 'rgb(0, 0, 191)'],  // Dark Blue
+            [1.0, 'rgb(0, 0, 127)']    // Darkest Blue
+        ];
+
+        uploadButton.addEventListener('click', () => fileInput.click());
+
+        // Handle Drag and Drop
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            uploadSection.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+        
+        uploadSection.addEventListener('dragenter', () => uploadSection.classList.add('border-blue-500', 'bg-blue-50'), false);
+        uploadSection.addEventListener('dragleave', () => uploadSection.classList.remove('border-blue-500', 'bg-blue-50'), false);
+        uploadSection.addEventListener('drop', handleDrop, false);
+
+        fileInput.addEventListener('change', (event) => {
+            const files = event.target.files;
+            if (files.length > 0) {
+                handleFiles(files);
+            }
+        });
+
+        function handleDrop(e) {
+            uploadSection.classList.remove('border-blue-500', 'bg-blue-50');
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            if (files.length > 0) {
+                handleFiles(files);
+            }
+        }
+        
+        function showStatus(message, isError = false) {
+            statusMessage.textContent = message;
+            statusMessage.className = `mt-4 text-center p-4 rounded-lg ${isError ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`;
+            statusMessage.classList.remove('hidden');
+        }
+
+        async function handleFiles(files) {
+            showStatus(`Processing ${files.length} file(s)...`, false);
+            visualizationSection.classList.add('hidden');
+            metadataSection.classList.add('hidden');
+            controlsSection.classList.add('hidden');
+            fileManagementSection.classList.add('hidden');
+            exportButton.classList.add('hidden');
+            exportCleanButton.classList.add('hidden');
+            
+            processedScans = [];
+            isShowingComposite = false;
+            
+            for (const file of files) {
+                try {
+                    const fileContent = await file.text();
+                    const parsedData = parseCScanFile(fileContent);
+                    parsedData.fileName = file.name;
+                    processedScans.push(parsedData);
+                } catch (error) {
+                    console.error(`Error processing file ${file.name}:`, error);
+                    showStatus(`Error processing ${file.name}: ${error.message}`, true);
+                    return;
+                }
+            }
+
+            if (processedScans.length > 0) {
+                currentScanData = processedScans[0];
+                renderPlot(currentScanData);
+                renderMetadata(currentScanData.metadata);
+                renderFileList();
+                showStatus(`${processedScans.length} file(s) processed successfully.`, false);
+                uploadSection.classList.add('hidden');
+                fileManagementSection.classList.remove('hidden');
+                controlsSection.classList.remove('hidden');
+            }
+        }
+
+        function parseCScanFile(content) {
+            const lines = content.split(/\r?\n/);
+            const metadata = {};
+            let dataStartIndex = -1;
+
+            // Parse Header
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (line.startsWith('mm')) {
+                    dataStartIndex = i;
+                    break;
+                }
+                const parts = line.split('=').map(p => p.trim());
+                if (parts.length === 2) {
+                    const key = parts[0];
+                    const value = isNaN(parseFloat(parts[1])) ? parts[1] : parseFloat(parts[1]);
+                    metadata[key] = value;
+                }
+            }
+            
+            if (dataStartIndex === -1) {
+                throw new Error('Could not find data matrix header (line starting with "mm").');
+            }
+
+            // Parse Data Matrix
+            const xCoords = lines[dataStartIndex].split('\t').slice(1).map(parseFloat);
+            const yCoords = [];
+            const tempThicknessValues = [];
+            
+            for (let i = dataStartIndex + 1; i < lines.length; i++) {
+                const line = lines[i].trim();
+                if (!line) continue;
+
+                const rowValues = line.split('\t');
+                const yValue = parseFloat(rowValues[0]);
+                
+                if (isNaN(yValue)) continue;
+
+                yCoords.push(yValue);
+                const thicknessRow = rowValues.slice(1).map(val => {
+                    if (val === 'ND' || val.trim() === '') return NaN; 
+                    return parseFloat(val);
+                });
+                tempThicknessValues.push(thicknessRow);
+            }
+
+            if (xCoords.length === 0 || yCoords.length === 0 || tempThicknessValues.length === 0) {
+                throw new Error('Failed to parse data matrix. Check file format.');
+            }
+            
+            // Store as flat array for efficiency
+            const flatThicknessValues = new Float32Array(tempThicknessValues.length * xCoords.length);
+            for(let i = 0; i < tempThicknessValues.length; i++) {
+                flatThicknessValues.set(tempThicknessValues[i], i * xCoords.length);
+            }
+
+            return { 
+                metadata, 
+                x_coords: xCoords, 
+                y_coords: yCoords,
+                thickness_values_flat: flatThicknessValues,
+                rows: yCoords.length,
+                cols: xCoords.length
+            };
+        }
+
+        function findMinMax(data) {
+            let min = Infinity;
+            let max = -Infinity;
+            for (let i = 0; i < data.length; i++) {
+                const val = data[i];
+                if (!isNaN(val)) {
+                    if (val < min) min = val;
+                    if (val > max) max = val;
+                }
+            }
+            return { min: min === Infinity ? 0 : min, max: max === -Infinity ? 0 : max };
+        }
+        
+        function reconstructMatrix(flatData, rows, cols) {
+            const matrix = [];
+            for (let i = 0; i < rows; i++) {
+                const row = [];
+                for (let j = 0; j < cols; j++) {
+                    const val = flatData[i * cols + j];
+                    row.push(isNaN(val) ? null : val);
+                }
+                matrix.push(row);
+            }
+            return matrix;
+        }
+
+        function renderPlot(data, isComposite = false) {
+            const metaMin = data.metadata['Min Thickness (mm)'];
+            const metaMax = data.metadata['Max Thickness (mm)'];
+
+            let matrix, xCoords, yCoords;
+            
+            if (isComposite && data.compositeMatrix) {
+                // Use pre-computed composite matrix
+                matrix = data.compositeMatrix;
+                xCoords = data.x_coords;
+                yCoords = data.y_coords;
+            } else if (data.thickness_values_flat) {
+                // Regular scan data
+                matrix = reconstructMatrix(data.thickness_values_flat, data.rows, data.cols);
+                xCoords = data.x_coords;
+                yCoords = data.y_coords;
+            } else {
+                console.error('Invalid data structure');
+                return;
+            }
+
+            // Set min/max values
+            if (!isComposite && metaMin !== undefined && metaMax !== undefined) {
+                minThicknessInput.value = parseFloat(metaMin).toFixed(2);
+                maxThicknessInput.value = parseFloat(metaMax).toFixed(2);
+            } else if (isComposite) {
+                // For composite, use standardized or calculated min/max
+                const stdMinMax = getStandardizedMinMax();
+                if (stdMinMax) {
+                    minThicknessInput.value = stdMinMax.min.toFixed(2);
+                    maxThicknessInput.value = stdMinMax.max.toFixed(2);
+                } else {
+                    const { min, max } = findMinMax(data.thickness_values_flat || matrix.flat());
+                    minThicknessInput.value = min.toFixed(2);
+                    maxThicknessInput.value = max.toFixed(2);
+                }
+            } else {
+                const { min, max } = findMinMax(data.thickness_values_flat);
+                minThicknessInput.value = min.toFixed(2);
+                maxThicknessInput.value = max.toFixed(2);
+            }
+
+            updatePlot(matrix, xCoords, yCoords, isComposite);
+        }
+
+        function updatePlot(matrix, xCoords, yCoords, isComposite = false) {
+            if (!matrix) {
+                if (!currentScanData) return;
+                
+                if (isShowingComposite && currentScanData.compositeMatrix) {
+                    matrix = currentScanData.compositeMatrix;
+                    xCoords = currentScanData.x_coords;
+                    yCoords = currentScanData.y_coords;
+                } else if (currentScanData.thickness_values_flat) {
+                    matrix = reconstructMatrix(currentScanData.thickness_values_flat, currentScanData.rows, currentScanData.cols);
+                    xCoords = currentScanData.x_coords;
+                    yCoords = currentScanData.y_coords;
+                } else {
+                    return;
+                }
+            }
+
+            const zmin = parseFloat(minThicknessInput.value) || null;
+            const zmax = parseFloat(maxThicknessInput.value) || null;
+
+            const plotData = [{
+                x: xCoords,
+                y: yCoords,
+                z: matrix,
+                type: 'heatmap',
+                colorscale: customColorscale,
+                zsmooth: 'best',
+                connectgaps: false,
+                zmin: zmin,
+                zmax: zmax,
+                colorbar: {
+                    title: 'Thickness (mm)',
+                    titleside: 'right',
+                    tickmode: 'linear',
+                    tick0: zmin,
+                    dtick: (zmax - zmin) / 10
+                },
+                hovertemplate: 'X: %{x:.2f} mm<br>Y: %{y:.2f} mm<br>Thickness: %{z:.2f} mm<extra></extra>'
+            }];
+
+            const title = isComposite ? 'Composite Corrosion Map' : 'Corrosion Heatmap';
+
+            const layout = {
+                title: {
+                    text: title,
+                    font: { size: 20 }
+                },
+                xaxis: { 
+                    title: 'Scan Axis (mm)', 
+                    scaleanchor: "y", 
+                    scaleratio: 1.0,
+                    zeroline: false
+                },
+                yaxis: { 
+                    title: 'Index Axis (mm)',
+                    zeroline: false
+                },
+                autosize: true,
+                margin: { l: 60, r: 60, t: 60, b: 60 }
+            };
+            
+            const config = { 
+                responsive: true, 
+                displaylogo: false,
+                modeBarButtonsToAdd: ['hoverclosest', 'hovercompare'],
+                toImageButtonOptions: {
+                    format: 'png',
+                    filename: isComposite ? 'composite_cscan' : 'cscan',
+                    width: 1920,
+                    height: 1080,
+                    scale: 2
+                }
+            };
+
+            Plotly.react(plotContainer, plotData, layout, config);
+            visualizationSection.classList.remove('hidden');
+            
+            if (isComposite || isShowingComposite) {
+                exportButton.classList.remove('hidden');
+                exportCleanButton.classList.remove('hidden');
+            } else if (currentScanData && currentScanData.fileName) {
+                // Also show export buttons for individual scans
+                exportButton.classList.remove('hidden');
+                exportCleanButton.classList.remove('hidden');
+            }
+        }
+        
+        updateButton.addEventListener('click', () => updatePlot());
+        compositeButton.addEventListener('click', generateComposite);
+        exportButton.addEventListener('click', exportImage);
+        exportCleanButton.addEventListener('click', exportCleanImage);
+
+        function renderFileList() {
+            fileListContainer.innerHTML = '';
+            processedScans.forEach((scan, index) => {
+                const fileElement = document.createElement('div');
+                fileElement.className = 'p-2 mt-2 rounded cursor-pointer hover:bg-gray-200 transition-colors';
+                if (!isShowingComposite && scan.fileName === currentScanData.fileName) {
+                    fileElement.classList.add('bg-blue-100', 'font-semibold');
+                }
+                fileElement.textContent = scan.fileName;
+                fileElement.onclick = () => {
+                    currentScanData = processedScans[index];
+                    isShowingComposite = false;
+                    renderPlot(currentScanData);
+                    renderMetadata(currentScanData.metadata);
+                    renderFileList();
+                };
+                fileListContainer.appendChild(fileElement);
+            });
+        }
+        
+        // OPTIMIZED WEB WORKER FOR COMPOSITE GENERATION
+        function getCompositeWorker() {
+            const workerCode = `
+                self.onmessage = function(event) {
+                    const scans = event.data;
+                    
+                    let globalMinX = Infinity, globalMaxX = -Infinity;
+                    let globalMinY = Infinity, globalMaxY = -Infinity;
+                    
+                    scans.forEach(scan => {
+                        const minX = Math.min(...scan.x_coords);
+                        const maxX = Math.max(...scan.x_coords);
+                        const minY = Math.min(...scan.y_coords);
+                        const maxY = Math.max(...scan.y_coords);
+                        
+                        if (minX < globalMinX) globalMinX = minX;
+                        if (maxX > globalMaxX) globalMaxX = maxX;
+                        if (minY < globalMinY) globalMinY = minY;
+                        if (maxY > globalMaxY) globalMaxY = maxY;
+                    });
+                    
+                    let minSpacing = Infinity;
+                    scans.forEach(scan => {
+                        if (scan.x_coords.length > 1) {
+                            const xSpacing = Math.abs(scan.x_coords[1] - scan.x_coords[0]);
+                            if (xSpacing > 0 && xSpacing < minSpacing) minSpacing = xSpacing;
+                        }
+                        if (scan.y_coords.length > 1) {
+                            const ySpacing = Math.abs(scan.y_coords[1] - scan.y_coords[0]);
+                            if (ySpacing > 0 && ySpacing < minSpacing) minSpacing = ySpacing;
+                        }
+                    });
+                    
+                    const resolution = minSpacing !== Infinity ? minSpacing : 1.0;
+                    
+                    const gridWidth = Math.ceil((globalMaxX - globalMinX) / resolution) + 1;
+                    const gridHeight = Math.ceil((globalMaxY - globalMinY) / resolution) + 1;
+                    
+                    const compositeGrid = new Float32Array(gridHeight * gridWidth).fill(0);
+                    const weightGrid = new Float32Array(gridHeight * gridWidth).fill(0);
+                    
+                    for (let s_idx = 0; s_idx < scans.length; s_idx++) {
+                        const scan = scans[s_idx];
+                        
+                        for (let i = 0; i < scan.rows; i++) {
+                            for (let j = 0; j < scan.cols; j++) {
+                                const val = scan.thickness_values_flat[i * scan.cols + j];
+                                
+                                if (!isNaN(val) && val > 0) {
+                                    const x = scan.x_coords[j];
+                                    const y = scan.y_coords[i];
+                                    
+                                    const gridX = Math.round((x - globalMinX) / resolution);
+                                    const gridY = Math.round((y - globalMinY) / resolution);
+                                    
+                                    if (gridX >= 0 && gridX < gridWidth && gridY >= 0 && gridY < gridHeight) {
+                                        const idx = gridY * gridWidth + gridX;
+                                        compositeGrid[idx] += val;
+                                        weightGrid[idx] += 1;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        self.postMessage({ 
+                            type: 'progress', 
+                            current: s_idx + 1, 
+                            total: scans.length 
+                        });
+                    }
+                    
+                    const matrix = [];
+                    const xCoords = Array.from({length: gridWidth}, (_, i) => globalMinX + i * resolution);
+                    const yCoords = Array.from({length: gridHeight}, (_, i) => globalMinY + i * resolution);
+                    
+                    const flatData = new Float32Array(gridHeight * gridWidth);
+
+                    for (let i = 0; i < gridHeight; i++) {
+                        const row = [];
+                        for (let j = 0; j < gridWidth; j++) {
+                            const idx = i * gridWidth + j;
+                            let val = null;
+                            if (weightGrid[idx] > 0) {
+                                val = compositeGrid[idx] / weightGrid[idx];
+                            }
+                            row.push(val);
+                            flatData[idx] = isNaN(val) ? NaN : val;
+                        }
+                        matrix.push(row);
+                    }
+                    
+                    self.postMessage({ 
+                        type: 'result',
+                        matrix: matrix,
+                        xCoords: xCoords,
+                        yCoords: yCoords,
+                        flatData: flatData,
+                    });
+                };
+            `;
+            const blob = new Blob([workerCode], { type: 'application/javascript' });
+            return new Worker(URL.createObjectURL(blob));
+        }
+
+        function getStandardizedMinMax() {
+            const counts = new Map();
+            processedScans.forEach(scan => {
+                const min = scan.metadata['Min Thickness (mm)'];
+                const max = scan.metadata['Max Thickness (mm)'];
+                if (min !== undefined && max !== undefined) {
+                    const key = `${min}|${max}`;
+                    counts.set(key, (counts.get(key) || 0) + 1);
+                }
+            });
+
+            if (counts.size === 0) return null;
+
+            let mostCommonKey = '';
+            let maxCount = 0;
+            for (const [key, count] of counts.entries()) {
+                if (count > maxCount) {
+                    maxCount = count;
+                    mostCommonKey = key;
+                }
+            }
+            
+            const [min, max] = mostCommonKey.split('|').map(parseFloat);
+            return { min, max };
+        }
+
+        function generateComposite() {
+            if (processedScans.length < 2) {
+                showStatus("Please upload at least two files to generate a composite.", true);
+                return;
+            }
+
+            showStatus("Generating composite heatmap...", false);
+            progressContainer.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            compositeButton.disabled = true;
+            compositeButton.textContent = "Processing...";
+
+            if (compositeWorker) compositeWorker.terminate();
+            compositeWorker = getCompositeWorker();
+
+            compositeWorker.onmessage = function(event) {
+                if (event.data.type === 'progress') {
+                    const progress = (event.data.current / event.data.total) * 100;
+                    progressBar.style.width = `${progress}%`;
+                    return;
+                }
+
+                if (event.data.type === 'result') {
+                    const { matrix, xCoords, yCoords, flatData } = event.data;
+                    
+                    const compositeData = {
+                        metadata: { 
+                            'Type': 'Composite',
+                            'Source Files': processedScans.length,
+                            'Total Points': matrix.length * matrix[0].length,
+                            'X Range': `${xCoords[0].toFixed(2)} - ${xCoords[xCoords.length-1].toFixed(2)} mm`,
+                            'Y Range': `${yCoords[0].toFixed(2)} - ${yCoords[yCoords.length-1].toFixed(2)} mm`
+                        },
+                        compositeMatrix: matrix,
+                        x_coords: xCoords,
+                        y_coords: yCoords,
+                        thickness_values_flat: flatData,
+                        rows: yCoords.length,
+                        cols: xCoords.length,
+                        isComposite: true
+                    };
+                    
+                    currentScanData = compositeData;
+                    isShowingComposite = true;
+                    renderPlot(currentScanData, true);
+                    renderMetadata(currentScanData.metadata);
+                    renderFileList(); 
+                    
+                    showStatus("Composite generated successfully.", false);
+                    progressContainer.classList.add('hidden');
+
+                    compositeButton.disabled = false;
+                    compositeButton.textContent = "Generate Composite";
+                    compositeWorker.terminate();
+                    compositeWorker = null;
+                }
+            };
+
+            compositeWorker.onerror = function(error) {
+                console.error("Error in composite worker:", error);
+                showStatus(`Error during composite generation: ${error.message}`, true);
+                progressContainer.classList.add('hidden');
+                compositeButton.disabled = false;
+                compositeButton.textContent = "Generate Composite";
+                if (compositeWorker) {
+                    compositeWorker.terminate();
+                    compositeWorker = null;
+                }
+            };
+
+            try {
+                compositeWorker.postMessage(processedScans);
+            } catch (error) {
+                console.error("Error sending data to worker:", error);
+                showStatus(`Error: ${error.message}`, true);
+                progressContainer.classList.add('hidden');
+                compositeButton.disabled = false;
+                compositeButton.textContent = "Generate Composite";
+            }
+        }
+
+        function exportImage() {
+            if (!currentScanData) return;
+            const filename = (isShowingComposite ? 'composite' : currentScanData.fileName.split('.')[0]) + `_cscan-full_${new Date().toISOString().split('T')[0]}`;
+            
+            Plotly.downloadImage(plotContainer, {
+                format: 'png',
+                width: 1920,
+                height: 1080,
+                scale: 2,
+                filename: filename
+            }).then(() => {
+                showStatus("Image with axes exported successfully!", false);
+            }).catch(error => {
+                console.error("Export error:", error);
+                showStatus("Failed to export image. Please try again.", true);
+            });
+        }
+
+        async function exportCleanImage() {
+            if (!currentScanData) {
+                showStatus("No data to export.", true);
+                return;
+            }
+
+            showStatus("Preparing clean heatmap for export...", false);
+
+            // Store original plot state
+            const originalData = JSON.parse(JSON.stringify(plotContainer.data));
+            const originalLayout = JSON.parse(JSON.stringify(plotContainer.layout));
+            const originalConfig = plotContainer._context;
+
+            // Create a clean layout for export
+            const cleanLayout = JSON.parse(JSON.stringify(originalLayout));
+            cleanLayout.title = null;
+            if(cleanLayout.xaxis) cleanLayout.xaxis.visible = false;
+            if(cleanLayout.yaxis) cleanLayout.yaxis.visible = false;
+            cleanLayout.margin = { l: 0, r: 0, t: 0, b: 0 };
+            
+            // Create a data trace without the colorbar
+            const cleanData = JSON.parse(JSON.stringify(originalData));
+            if (cleanData[0]) {
+                cleanData[0].showscale = false;
+            }
+
+            try {
+                // Temporarily update plot to the clean state
+                await Plotly.react(plotContainer, cleanData, cleanLayout, originalConfig);
+                
+                const filename = (isShowingComposite ? 'composite' : currentScanData.fileName.split('.')[0]) + `_cscan-heatmap_${new Date().toISOString().split('T')[0]}`;
+                
+                // Trigger the download
+                await Plotly.downloadImage(plotContainer, {
+                    format: 'png',
+                    width: 1920,
+                    height: 1080,
+                    scale: 1, // Use scale 1 for exact pixel dimensions
+                    filename: filename
+                });
+
+                showStatus("Clean heatmap exported successfully!", false);
+
+            } catch (error) {
+                console.error("Clean export error:", error);
+                showStatus("Failed to export clean heatmap. Please try again.", true);
+            } finally {
+                // CRITICAL: Always restore the original plot, even if export fails
+                await Plotly.react(plotContainer, originalData, originalLayout, originalConfig);
+            }
+        }
+
+        function renderMetadata(metadata) {
+            metadataContent.innerHTML = '';
+            for (const key in metadata) {
+                const div = document.createElement('div');
+                div.className = 'p-2 bg-white rounded shadow-sm';
+                div.innerHTML = `<span class="font-semibold text-gray-600">${key}:</span> <span class="text-gray-800">${metadata[key]}</span>`;
+                metadataContent.appendChild(div);
+            }
+            metadataSection.classList.remove('hidden');
+        }
+
+        // Performance monitoring
+        if (window.performance && window.performance.memory) {
+            setInterval(() => {
+                const memoryInfo = window.performance.memory;
+                const usedMemory = (memoryInfo.usedJSHeapSize / 1048576).toFixed(2);
+                const totalMemory = (memoryInfo.totalJSHeapSize / 1048576).toFixed(2);
+                console.log(`Memory: ${usedMemory}MB / ${totalMemory}MB`);
+            }, 5000);
+        }
+
+    </script>
+</body>
+</html>
