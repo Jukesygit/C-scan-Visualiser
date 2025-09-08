@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" class="light">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -159,18 +159,22 @@
             [1.0, 'rgb(0, 0, 127)']    // Darkest Blue
         ];
 
-        // --- THEME SWITCHER LOGIC ---
+        // --- THEME SWITCHER LOGIC (FIXED) ---
         function applyTheme(theme) {
             if (theme === 'dark') {
+                document.documentElement.classList.remove('light');
                 document.documentElement.classList.add('dark');
                 localStorage.setItem('theme', 'dark');
-                sunIcon.classList.remove('hidden');
-                moonIcon.classList.add('hidden');
+                // Fixed: Show moon icon in dark mode (to switch to light)
+                moonIcon.classList.remove('hidden');
+                sunIcon.classList.add('hidden');
             } else {
                 document.documentElement.classList.remove('dark');
+                document.documentElement.classList.add('light');
                 localStorage.setItem('theme', 'light');
-                sunIcon.classList.add('hidden');
-                moonIcon.classList.remove('hidden');
+                // Fixed: Show sun icon in light mode (to switch to dark)
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
             }
             if (currentScanData) {
                 updatePlot();
@@ -178,10 +182,11 @@
         }
 
         themeToggleBtn.addEventListener('click', () => {
-            const currentTheme = localStorage.getItem('theme') || 'light';
+            const currentTheme = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
             applyTheme(currentTheme === 'light' ? 'dark' : 'light');
         });
         
+        // Initialize theme based on preference or saved value
         const savedTheme = localStorage.getItem('theme');
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         if (savedTheme) {
@@ -373,7 +378,7 @@
             const title = isShowingComposite ? 'Composite Corrosion Map' : 'Corrosion Heatmap';
             const layout = { title: { text: title, font: { size: 20 } }, xaxis: { title: 'Scan Axis (mm)', scaleanchor: "y", scaleratio: 1.0, zeroline: false }, yaxis: { title: 'Index Axis (mm)', zeroline: false }, autosize: true, margin: { l: 60, r: 60, t: 60, b: 60 } };
             
-            if (localStorage.getItem('theme') === 'dark') {
+            if (document.documentElement.classList.contains('dark')) {
                 layout.template = 'plotly_dark';
                 layout.paper_bgcolor = 'rgb(31, 41, 55)'; // Tailwind gray-800
                 layout.plot_bgcolor = 'rgb(31, 41, 55)';
@@ -444,84 +449,3 @@
         }
 
         function generateComposite() {
-            if (processedScans.length < 2) return showStatus("Please upload at least two files.", true);
-
-            showStatus("Generating composite heatmap...", false);
-            progressContainer.classList.remove('hidden');
-            progressBar.style.width = '0%';
-            compositeButton.disabled = true;
-            compositeButton.textContent = "Processing...";
-
-            if (compositeWorker) compositeWorker.terminate();
-            compositeWorker = getCompositeWorker();
-
-            compositeWorker.onmessage = function({data}) {
-                if (data.type === 'progress') {
-                    progressBar.style.width = `${(data.current / data.total) * 100}%`;
-                } else if (data.type === 'result') {
-                    const { matrix, xCoords, yCoords, flatData } = data;
-                    currentScanData = { metadata: { 'Type': 'Composite', 'Source Files': processedScans.length }, compositeMatrix: matrix, x_coords: xCoords, y_coords: yCoords, thickness_values_flat: flatData, rows: yCoords.length, cols: xCoords.length, isComposite: true };
-                    isShowingComposite = true;
-                    renderPlot(currentScanData, true);
-                    renderMetadata(currentScanData.metadata);
-                    renderFileList();
-                    showStatus("Composite generated successfully.", false);
-                    progressContainer.classList.add('hidden');
-                    compositeButton.disabled = false;
-                    compositeButton.textContent = "Generate Composite";
-                    compositeWorker.terminate();
-                    compositeWorker = null;
-                }
-            };
-
-            compositeWorker.onerror = e => {
-                showStatus(`Error during composite generation: ${e.message}`, true);
-                progressContainer.classList.add('hidden');
-                compositeButton.disabled = false; compositeButton.textContent = "Generate Composite";
-                if (compositeWorker) compositeWorker.terminate();
-            };
-            compositeWorker.postMessage(processedScans);
-        }
-
-        function exportImage() {
-            if (!currentScanData) return;
-            const filename = (isShowingComposite ? 'composite' : currentScanData.fileName.split('.')[0]) + `_cscan-full.png`;
-            Plotly.downloadImage(plotContainer, { format: 'png', width: 1920, height: 1080, scale: 2, filename }).then(() => showStatus("Image exported!", false));
-        }
-
-        async function exportCleanImage() {
-            if (!currentScanData) return showStatus("No data to export.", true);
-            showStatus("Preparing clean export...", false);
-
-            const originalData = JSON.parse(JSON.stringify(plotContainer.data));
-            const originalLayout = JSON.parse(JSON.stringify(plotContainer.layout));
-            const cleanLayout = { ...originalLayout, title: null, 'xaxis.visible': false, 'yaxis.visible': false, margin: { l: 0, r: 0, t: 0, b: 0 } };
-            const cleanData = JSON.parse(JSON.stringify(originalData));
-            if (cleanData[0]) cleanData[0].showscale = false;
-
-            try {
-                await Plotly.react(plotContainer, cleanData, cleanLayout, plotContainer._context);
-                const filename = (isShowingComposite ? 'composite' : currentScanData.fileName.split('.')[0]) + `_cscan-heatmap.png`;
-                await Plotly.downloadImage(plotContainer, { format: 'png', width: 1920, height: 1080, scale: 1, filename });
-                showStatus("Clean heatmap exported!", false);
-            } catch (e) {
-                showStatus("Failed to export clean heatmap.", true);
-            } finally {
-                await Plotly.react(plotContainer, originalData, originalLayout, plotContainer._context);
-            }
-        }
-
-        function renderMetadata(metadata) {
-            metadataContent.innerHTML = '';
-            for (const key in metadata) {
-                const div = document.createElement('div');
-                div.className = 'p-2 bg-white dark:bg-gray-800 rounded shadow-sm';
-                div.innerHTML = `<span class="font-semibold text-gray-600 dark:text-gray-400">${key}:</span> <span class="text-gray-800 dark:text-gray-200">${metadata[key]}</span>`;
-                metadataContent.appendChild(div);
-            }
-            metadataSection.classList.remove('hidden');
-        }
-    </script>
-</body>
-</html>
-
