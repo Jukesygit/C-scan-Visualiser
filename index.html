@@ -5,6 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phased Array C-Scan Visualizer - Optimized</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        // This is the crucial configuration for enabling class-based dark mode in Tailwind CSS.
+        tailwind.config = {
+            darkMode: 'class'
+        }
+    </script>
     <script src="https://cdn.plot.ly/plotly-2.32.0.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -159,22 +165,20 @@
             [1.0, 'rgb(0, 0, 127)']    // Darkest Blue
         ];
 
-        // --- THEME SWITCHER LOGIC (FIXED) ---
+        // --- THEME SWITCHER LOGIC ---
         function applyTheme(theme) {
             if (theme === 'dark') {
                 document.documentElement.classList.remove('light');
                 document.documentElement.classList.add('dark');
                 localStorage.setItem('theme', 'dark');
-                // Fixed: Show moon icon in dark mode (to switch to light)
-                moonIcon.classList.remove('hidden');
-                sunIcon.classList.add('hidden');
+                sunIcon.classList.remove('hidden');
+                moonIcon.classList.add('hidden');
             } else {
                 document.documentElement.classList.remove('dark');
                 document.documentElement.classList.add('light');
                 localStorage.setItem('theme', 'light');
-                // Fixed: Show sun icon in light mode (to switch to dark)
-                sunIcon.classList.remove('hidden');
-                moonIcon.classList.add('hidden');
+                sunIcon.classList.add('hidden');
+                moonIcon.classList.remove('hidden');
             }
             if (currentScanData) {
                 updatePlot();
@@ -498,91 +502,30 @@
             if (!currentScanData) return showStatus("No data to export.", true);
             showStatus("Preparing clean export...", false);
 
-            // Create a temporary invisible container for the clean export
-            const tempContainer = document.createElement('div');
-            tempContainer.style.position = 'absolute';
-            tempContainer.style.left = '-9999px';
-            tempContainer.style.width = '1920px';
-            tempContainer.style.height = '1080px';
-            document.body.appendChild(tempContainer);
+            const originalData = JSON.parse(JSON.stringify(plotContainer.data));
+            const originalLayout = JSON.parse(JSON.stringify(plotContainer.layout));
+            
+            // Create a deep copy and modify it for the clean export
+            const cleanLayout = JSON.parse(JSON.stringify(originalLayout));
+            cleanLayout.title = null;
+            if (cleanLayout.xaxis) cleanLayout.xaxis.visible = false;
+            if (cleanLayout.yaxis) cleanLayout.yaxis.visible = false;
+            cleanLayout.margin = { l: 0, r: 0, t: 0, b: 0 };
+            
+            const cleanData = JSON.parse(JSON.stringify(originalData));
+            if (cleanData[0]) cleanData[0].showscale = false;
 
             try {
-                // Get current matrix data
-                let matrix, xCoords, yCoords;
-                if (isShowingComposite && currentScanData.compositeMatrix) {
-                    matrix = currentScanData.compositeMatrix;
-                    xCoords = currentScanData.x_coords;
-                    yCoords = currentScanData.y_coords;
-                } else {
-                    matrix = reconstructMatrix(currentScanData.thickness_values_flat, currentScanData.rows, currentScanData.cols);
-                    xCoords = currentScanData.x_coords;
-                    yCoords = currentScanData.y_coords;
-                }
-
-                const zmin = parseFloat(minThicknessInput.value) || null;
-                const zmax = parseFloat(maxThicknessInput.value) || null;
-
-                // Create clean plot data with no labels or scales
-                const cleanData = [{
-                    x: xCoords,
-                    y: yCoords,
-                    z: matrix,
-                    type: 'heatmap',
-                    colorscale: customColorscale,
-                    zsmooth: 'best',
-                    connectgaps: false,
-                    zmin: zmin,
-                    zmax: zmax,
-                    showscale: false,  // Hide colorbar
-                    hoverinfo: 'skip'  // Disable hover
-                }];
-
-                // Create clean layout with transparent background
-                const cleanLayout = {
-                    xaxis: {
-                        visible: false,
-                        scaleanchor: "y",
-                        scaleratio: 1.0
-                    },
-                    yaxis: {
-                        visible: false
-                    },
-                    margin: { l: 0, r: 0, t: 0, b: 0 },
-                    paper_bgcolor: 'rgba(0,0,0,0)',  // Transparent background
-                    plot_bgcolor: 'rgba(0,0,0,0)',   // Transparent background
-                    showlegend: false,
-                    autosize: false,
-                    width: 1920,
-                    height: 1080
-                };
-
-                const cleanConfig = {
-                    staticPlot: true,
-                    displayModeBar: false
-                };
-
-                // Create the clean plot in temp container
-                await Plotly.newPlot(tempContainer, cleanData, cleanLayout, cleanConfig);
-
-                // Export the clean heatmap
-                const filename = (isShowingComposite ? 'composite' : currentScanData.fileName.split('.')[0]) + `_heatmap.png`;
-                await Plotly.downloadImage(tempContainer, {
-                    format: 'png',
-                    width: 1920,
-                    height: 1080,
-                    scale: 1,
-                    filename: filename
-                });
-
-                showStatus("Clean heatmap exported with transparent background!", false);
-            } catch (error) {
-                console.error("Clean export failed:", error);
+                await Plotly.react(plotContainer, cleanData, cleanLayout, plotContainer._context);
+                const filename = (isShowingComposite ? 'composite' : currentScanData.fileName.split('.')[0]) + `_cscan-heatmap.png`;
+                await Plotly.downloadImage(plotContainer, { format: 'png', width: 1920, height: 1080, scale: 1, filename });
+                showStatus("Clean heatmap exported!", false);
+            } catch (e) {
                 showStatus("Failed to export clean heatmap.", true);
+                console.error("Clean export failed:", e);
             } finally {
-                // Clean up temp container
-                if (tempContainer.parentNode) {
-                    document.body.removeChild(tempContainer);
-                }
+                // ALWAYS restore the original plot
+                await Plotly.react(plotContainer, originalData, originalLayout, plotContainer._context);
             }
         }
 
@@ -596,3 +539,7 @@
             }
             metadataSection.classList.remove('hidden');
         }
+    </script>
+</body>
+</html>
+
