@@ -449,3 +449,150 @@
         }
 
         function generateComposite() {
+            if (processedScans.length < 2) return showStatus("Please upload at least two files.", true);
+
+            showStatus("Generating composite heatmap...", false);
+            progressContainer.classList.remove('hidden');
+            progressBar.style.width = '0%';
+            compositeButton.disabled = true;
+            compositeButton.textContent = "Processing...";
+
+            if (compositeWorker) compositeWorker.terminate();
+            compositeWorker = getCompositeWorker();
+
+            compositeWorker.onmessage = function({data}) {
+                if (data.type === 'progress') {
+                    progressBar.style.width = `${(data.current / data.total) * 100}%`;
+                } else if (data.type === 'result') {
+                    const { matrix, xCoords, yCoords, flatData } = data;
+                    currentScanData = { metadata: { 'Type': 'Composite', 'Source Files': processedScans.length }, compositeMatrix: matrix, x_coords: xCoords, y_coords: yCoords, thickness_values_flat: flatData, rows: yCoords.length, cols: xCoords.length, isComposite: true };
+                    isShowingComposite = true;
+                    renderPlot(currentScanData, true);
+                    renderMetadata(currentScanData.metadata);
+                    renderFileList();
+                    showStatus("Composite generated successfully.", false);
+                    progressContainer.classList.add('hidden');
+                    compositeButton.disabled = false;
+                    compositeButton.textContent = "Generate Composite";
+                    compositeWorker.terminate();
+                    compositeWorker = null;
+                }
+            };
+
+            compositeWorker.onerror = e => {
+                showStatus(`Error during composite generation: ${e.message}`, true);
+                progressContainer.classList.add('hidden');
+                compositeButton.disabled = false; compositeButton.textContent = "Generate Composite";
+                if (compositeWorker) compositeWorker.terminate();
+            };
+            compositeWorker.postMessage(processedScans);
+        }
+
+        function exportImage() {
+            if (!currentScanData) return;
+            const filename = (isShowingComposite ? 'composite' : currentScanData.fileName.split('.')[0]) + `_cscan-full.png`;
+            Plotly.downloadImage(plotContainer, { format: 'png', width: 1920, height: 1080, scale: 2, filename }).then(() => showStatus("Image exported!", false));
+        }
+
+        async function exportCleanImage() {
+            if (!currentScanData) return showStatus("No data to export.", true);
+            showStatus("Preparing clean export...", false);
+
+            // Create a temporary invisible container for the clean export
+            const tempContainer = document.createElement('div');
+            tempContainer.style.position = 'absolute';
+            tempContainer.style.left = '-9999px';
+            tempContainer.style.width = '1920px';
+            tempContainer.style.height = '1080px';
+            document.body.appendChild(tempContainer);
+
+            try {
+                // Get current matrix data
+                let matrix, xCoords, yCoords;
+                if (isShowingComposite && currentScanData.compositeMatrix) {
+                    matrix = currentScanData.compositeMatrix;
+                    xCoords = currentScanData.x_coords;
+                    yCoords = currentScanData.y_coords;
+                } else {
+                    matrix = reconstructMatrix(currentScanData.thickness_values_flat, currentScanData.rows, currentScanData.cols);
+                    xCoords = currentScanData.x_coords;
+                    yCoords = currentScanData.y_coords;
+                }
+
+                const zmin = parseFloat(minThicknessInput.value) || null;
+                const zmax = parseFloat(maxThicknessInput.value) || null;
+
+                // Create clean plot data with no labels or scales
+                const cleanData = [{
+                    x: xCoords,
+                    y: yCoords,
+                    z: matrix,
+                    type: 'heatmap',
+                    colorscale: customColorscale,
+                    zsmooth: 'best',
+                    connectgaps: false,
+                    zmin: zmin,
+                    zmax: zmax,
+                    showscale: false,  // Hide colorbar
+                    hoverinfo: 'skip'  // Disable hover
+                }];
+
+                // Create clean layout with transparent background
+                const cleanLayout = {
+                    xaxis: {
+                        visible: false,
+                        scaleanchor: "y",
+                        scaleratio: 1.0
+                    },
+                    yaxis: {
+                        visible: false
+                    },
+                    margin: { l: 0, r: 0, t: 0, b: 0 },
+                    paper_bgcolor: 'rgba(0,0,0,0)',  // Transparent background
+                    plot_bgcolor: 'rgba(0,0,0,0)',   // Transparent background
+                    showlegend: false,
+                    autosize: false,
+                    width: 1920,
+                    height: 1080
+                };
+
+                const cleanConfig = {
+                    staticPlot: true,
+                    displayModeBar: false
+                };
+
+                // Create the clean plot in temp container
+                await Plotly.newPlot(tempContainer, cleanData, cleanLayout, cleanConfig);
+
+                // Export the clean heatmap
+                const filename = (isShowingComposite ? 'composite' : currentScanData.fileName.split('.')[0]) + `_heatmap.png`;
+                await Plotly.downloadImage(tempContainer, {
+                    format: 'png',
+                    width: 1920,
+                    height: 1080,
+                    scale: 1,
+                    filename: filename
+                });
+
+                showStatus("Clean heatmap exported with transparent background!", false);
+            } catch (error) {
+                console.error("Clean export failed:", error);
+                showStatus("Failed to export clean heatmap.", true);
+            } finally {
+                // Clean up temp container
+                if (tempContainer.parentNode) {
+                    document.body.removeChild(tempContainer);
+                }
+            }
+        }
+
+        function renderMetadata(metadata) {
+            metadataContent.innerHTML = '';
+            for (const key in metadata) {
+                const div = document.createElement('div');
+                div.className = 'p-2 bg-white dark:bg-gray-800 rounded shadow-sm';
+                div.innerHTML = `<span class="font-semibold text-gray-600 dark:text-gray-400">${key}:</span> <span class="text-gray-800 dark:text-gray-200">${metadata[key]}</span>`;
+                metadataContent.appendChild(div);
+            }
+            metadataSection.classList.remove('hidden');
+        }
